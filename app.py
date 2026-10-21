@@ -595,8 +595,8 @@ def _rapidapi_fetch_links(vid):
     key = os.environ.get("RAPIDAPI_KEY")
     if not key:
         return None
-    host = os.environ.get("RAPIDAPI_HOST", "youtube-search-download3.p.rapidapi.com")
-    endpoint = os.environ.get("RAPIDAPI_ENDPOINT", "/download?video={id}")
+    host = os.environ.get("RAPIDAPI_HOST", "ytstream-download-youtube-videos.p.rapidapi.com")
+    endpoint = os.environ.get("RAPIDAPI_ENDPOINT", "/dl?id={id}")
     api_url = "https://" + host + endpoint.replace("{id}", urllib.parse.quote(vid))
     try:
         req = urllib.request.Request(api_url, headers={

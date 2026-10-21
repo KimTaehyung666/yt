@@ -52,9 +52,9 @@ lewat API itu (server penyedia yang mengambil videonya).
 Cara pasang:
 
 1. Daftar gratis di **rapidapi.com** (bisa login Google/GitHub).
-2. Cari API **"YouTube Search Download"** (host
-   `youtube-search-download3.p.rapidapi.com`) → tab **Pricing** →
-   pilih paket **Basic (Free)** → Subscribe.
+2. Cari API **"YTStream - Download YouTube Videos"** (oleh ytjar, host
+   `ytstream-download-youtube-videos.p.rapidapi.com`) → tab **Pricing**
+   → pilih paket **Basic (Free)** → Subscribe.
 3. Di tab Endpoints, salin nilai **X-RapidAPI-Key** kamu.
 4. Di Vercel (project Turunin): **Settings → Environment Variables** →
    tambah `RAPIDAPI_KEY` = key tadi → **Redeploy**.
@@ -63,8 +63,8 @@ Cara pasang:
 
 Penyedia lain bisa dipakai lewat env tambahan: `RAPIDAPI_HOST` dan
 `RAPIDAPI_ENDPOINT` (path dengan placeholder `{id}` untuk ID video,
-bawaan: `/download?video={id}`). Link media dipanen dari JSON respons
-secara toleran (googlevideo / .mp4 / .mp3 / parameter mime).
+bawaan: `/dl?id={id}`). Link media dipanen dari JSON respons secara
+toleran (googlevideo / .mp4 / .mp3 / parameter mime).
 
 Catatan jujur: kuota paket gratis terbatas (umumnya ratusan request per
 bulan) dan ketersediaan API pihak ketiga bisa berubah sewaktu-waktu.
