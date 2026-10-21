@@ -122,8 +122,9 @@
     </div>
     <div id="info-zone"></div>
     <div id="fmt-zone" style="display:none">
+      <div id="image-note" class="note" style="display:none">Postingan ini isinya <b>gambar</b> — tombol download akan mengambil gambarnya (resolusi pratinjau publik).</div>
       <div class="fmt-row">
-        <div class="fmt-group">
+        <div class="fmt-group" id="kind-group">
           <label>Format</label>
           <div class="seg">
             <button id="kind-mp4" class="on" onclick="setKind('mp4')">Video MP4</button>
@@ -191,6 +192,11 @@ async function checkInfo() {
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'Gagal membaca link.');
     INFO = j;
+    const isImg = !!j.is_image;
+    document.getElementById('image-note').style.display = isImg ? '' : 'none';
+    document.getElementById('kind-group').style.display = isImg ? 'none' : '';
+    document.getElementById('quality-group').style.display = isImg ? 'none' : '';
+    if (isImg) KIND = 'image'; else if (KIND === 'image') { KIND = 'mp4'; setKind('mp4'); }
     let h = '<div class="info-card">';
     if (j.thumbnail) h += '<img src="' + esc(j.thumbnail) + '" alt="">';
     h += '<div class="info-main"><div class="info-title">' + esc(j.title) + '</div>';

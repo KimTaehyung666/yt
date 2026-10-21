@@ -102,6 +102,9 @@ def info():
         fb = _api_info_fallback(url)
         if fb:
             return jsonify(fb)
+        ig = _ig_info_fallback(url)
+        if ig:
+            return jsonify(ig)
         return jsonify({"error": _friendly_error(e)}), 502
     if inf.get("_type") == "playlist":
         entries = list(inf.get("entries") or [])
@@ -405,8 +408,15 @@ def stream_check():
     url = str(data.get("url") or "").strip()
     if not re.match(r"^https?://", url):
         return jsonify({"error": "Link tidak valid."}), 400
-    kind = "mp3" if data.get("kind") == "mp3" else "mp4"
+    kind = data.get("kind") if data.get("kind") in ("mp3", "image") else "mp4"
     quality = str(data.get("quality") or "best")
+    if kind == "image":
+        iplan = _ig_image_plan(url)
+        if iplan:
+            plan, title = iplan
+            return jsonify({"mode": "stream", "via": "image",
+                            "token": _token_store(plan, title)})
+        return jsonify({"error": "Link ini bukan postingan foto Instagram yang gambarnya bisa diambil."}), 422
     plan, reason, title, err = None, "", "", None
     try:
         plan, reason, title = _resolve(url, kind, quality)
@@ -453,6 +463,12 @@ def stream():
             return err_page(_friendly_error(e))
         if not plan:
             return err_page(reason)
+
+    if plan["type"] == "image":
+        resp = Response(_proxy_url_gen(plan["url"], {"User-Agent": "Mozilla/5.0"}),
+                        mimetype="image/jpeg")
+        resp.headers["Content-Disposition"] = _disp(_safe_filename(title, "jpg"))
+        return resp
 
     if plan["type"] == "api_link":
         # Link dari API eksternal. Di serverless browser diarahkan
@@ -679,6 +695,68 @@ def _api_info_fallback(url):
         "is_audio_only": False,
         "via_api": True,
     }
+
+
+# =====================================================================
+# FOTO INSTAGRAM — yt-dlp menolak postingan foto ("No video formats
+# found"), jadi gambar diambil dari meta pratinjau publik (og:image)
+# yang Instagram sajikan untuk perayap tautan. Resolusi mengikuti
+# pratinjau publik (640px); carousel hanya terbaca gambar sampulnya.
+# =====================================================================
+def _ig_photo(url):
+    if "/p/" not in str(url or ""):
+        return None
+    m = re.search(r"instagram\.com/p/([A-Za-z0-9_-]+)", str(url or ""))
+    if not m:
+        return None
+    page = "https://www.instagram.com/p/%s/" % m.group(1)
+    for ua in ("facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+               "Twitterbot/1.0"):
+        try:
+            req = urllib.request.Request(page, headers={"User-Agent": ua})
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                html = resp.read().decode("utf-8", "replace")
+        except Exception:
+            continue
+        og = re.search(r'property="og:image" content="([^"]+)"', html)
+        if not og:
+            continue
+        img = og.group(1).replace("&amp;", "&")
+        import html as _html_lib
+        t = re.search(r'property="og:title" content="([^"]+)"', html)
+        raw = _html_lib.unescape(t.group(1)) if t else ""
+        uploader = ""
+        mu = re.match(r"(.+?) on Instagram:", raw)
+        if mu:
+            uploader = mu.group(1).strip()
+        title = re.sub(r"^.*? on Instagram:\s*", "", raw).strip().strip('"')
+        title = re.sub(r"\s+•\s+Instagram.*$", "", title)[:70].strip() or "Foto Instagram"
+        return {"image_url": img, "title": title, "uploader": uploader}
+    return None
+
+
+def _ig_info_fallback(url):
+    ph = _ig_photo(url)
+    if not ph:
+        return None
+    return {
+        "title": ph["title"],
+        "platform": "Instagram",
+        "uploader": ph.get("uploader") or "",
+        "duration": None,
+        "duration_label": "-",
+        "thumbnail": ph["image_url"],
+        "heights": [],
+        "is_audio_only": False,
+        "is_image": True,
+    }
+
+
+def _ig_image_plan(url):
+    ph = _ig_photo(url)
+    if not ph:
+        return None
+    return {"type": "image", "url": ph["image_url"]}, ph["title"]
 
 
 if __name__ == "__main__":
