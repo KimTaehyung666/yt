@@ -1,6 +1,6 @@
 import os, re, glob, shutil, tempfile, threading, uuid
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response
 
 app = Flask(__name__)
 
@@ -232,6 +232,216 @@ def job_file(job_id):
         return jsonify({"error": "File tidak ditemukan."}), 404
     f = job["file"]
     return send_file(f["path"], as_attachment=True, download_name=f["name"])
+
+
+# =====================================================================
+# MODE LANGSUNG (streaming) — server TIDAK menyimpan file.
+# yt-dlp mencari alamat file asli, lalu server meneruskannya sebagai
+# pipa ke browser: unduhan dikelola browser dan langsung masuk folder
+# Download. MP3 & gabungan video+audio terpisah memakai ffmpeg sebagai
+# pipa juga (input URL -> stdout) — tetap tanpa file simpan.
+# =====================================================================
+import subprocess, urllib.request, urllib.error, urllib.parse
+
+
+def _safe_filename(title, ext):
+    name = re.sub(r"[^\w\s.\-]", "", str(title or "turunin"), flags=re.UNICODE).strip()
+    name = re.sub(r"\s+", " ", name)[:80].strip() or "turunin"
+    return name + "." + ext
+
+
+def _disp(filename):
+    quoted = urllib.parse.quote(filename)
+    ascii_fb = filename.encode("ascii", "ignore").decode() or "turunin"
+    return "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (ascii_fb, quoted)
+
+
+def _extract(url):
+    with yt_dlp.YoutubeDL(_ydl_opts()) as ydl:
+        inf = ydl.extract_info(url, download=False)
+    if inf.get("_type") == "playlist":
+        entries = list(inf.get("entries") or [])
+        if entries:
+            inf = entries[0]
+    return inf
+
+
+def _pick_stream_plan(inf, kind, quality):
+    """Return (plan | None, alasan). Plan: proxy / ffmpeg_mp3 / ffmpeg_merge."""
+    fmts = [f for f in (inf.get("formats") or []) if f.get("url")]
+    if not fmts:
+        return None, "Platform tidak memberi alamat file langsung untuk link ini."
+    h = int(quality) if str(quality or "").isdigit() else None
+
+    # Catatan: extractor generik (file langsung) sering tidak mengisi
+    # vcodec/acodec (None). Itu dianggap "ada" — hanya nilai "none"
+    # eksplisit yang berarti stream-nya memang tidak ada.
+    def has_v(f):
+        return f.get("vcodec") != "none"
+
+    def has_a(f):
+        return f.get("acodec") != "none"
+
+    def audio_only(f):
+        return f.get("vcodec") == "none" and has_a(f)
+
+    def video_only(f):
+        return f.get("acodec") == "none" and has_v(f)
+
+    if kind == "mp3":
+        auds = [f for f in fmts if audio_only(f)] or [f for f in fmts if has_a(f)]
+        if not auds:
+            return None, "Tidak ada stream audio untuk link ini."
+        best = max(auds, key=lambda f: f.get("abr") or 0)
+        if HAS_FFMPEG:
+            return {"type": "ffmpeg_mp3", "fmt": best}, ""
+        return {"type": "proxy", "fmt": best}, ""
+
+    videos = [f for f in fmts if has_v(f)]
+    prog = [f for f in videos if has_a(f)]
+    if h:
+        capped = [f for f in prog if (f.get("height") or 0) <= h]
+        if capped:
+            prog = capped
+    if prog:
+        prog.sort(key=lambda f: ((f.get("height") or 0),
+                                 1 if f.get("ext") == "mp4" else 0), reverse=True)
+        return {"type": "proxy", "fmt": prog[0]}, ""
+    if HAS_FFMPEG:
+        vids = [f for f in videos if video_only(f)]
+        if h:
+            capped = [f for f in vids if (f.get("height") or 0) <= h]
+            if capped:
+                vids = capped
+        vids.sort(key=lambda f: ((f.get("height") or 0),
+                                 1 if str(f.get("vcodec", "")).startswith("avc1") else 0),
+                  reverse=True)
+        auds = [f for f in fmts if audio_only(f)]
+        if vids and auds and str(vids[0].get("vcodec", "")).startswith("avc1"):
+            auds.sort(key=lambda f: (1 if f.get("ext") == "m4a" else 0,
+                                     f.get("abr") or 0), reverse=True)
+            return {"type": "ffmpeg_merge", "vfmt": vids[0], "afmt": auds[0]}, ""
+    return None, ("Di kualitas ini video & audionya terpisah dan tidak bisa "
+                  "digabung sambil jalan. Mode simpan dipakai untuk kualitas ini.")
+
+
+def _resolve(url, kind, quality):
+    inf = _extract(url)
+    plan, reason = _pick_stream_plan(inf, kind, quality)
+    return plan, reason, inf.get("title") or "turunin"
+
+
+def _proxy_gen(fmt):
+    req = urllib.request.Request(fmt["url"], headers=dict(fmt.get("http_headers") or {}))
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        while True:
+            chunk = resp.read(262144)
+            if not chunk:
+                break
+            yield chunk
+
+
+def _ffmpeg_gen(args):
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        while True:
+            chunk = proc.stdout.read(262144)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def _ffmpeg_header_args(fmt):
+    hdrs = fmt.get("http_headers") or {}
+    if not hdrs:
+        return []
+    blob = "".join("%s: %s\r\n" % (k, v) for k, v in hdrs.items())
+    return ["-headers", blob]
+
+
+_CTYPE = {"mp4": "video/mp4", "webm": "video/webm", "m4a": "audio/mp4",
+          "mp3": "audio/mpeg", "opus": "audio/opus", "ogg": "audio/ogg"}
+
+
+@app.route("/api/stream/check", methods=["POST"])
+def stream_check():
+    if not ENGINE_OK:
+        return jsonify({"error": "Mesin yt-dlp tidak tersedia di server ini. Sebab: " + ENGINE_ERROR}), 500
+    data = request.get_json(force=True, silent=True) or {}
+    url = str(data.get("url") or "").strip()
+    if not re.match(r"^https?://", url):
+        return jsonify({"error": "Link tidak valid."}), 400
+    kind = "mp3" if data.get("kind") == "mp3" else "mp4"
+    quality = str(data.get("quality") or "best")
+    try:
+        plan, reason, _title = _resolve(url, kind, quality)
+    except Exception as e:
+        return jsonify({"error": _friendly_error(e)}), 502
+    if not plan:
+        return jsonify({"mode": "job", "reason": reason})
+    return jsonify({"mode": "stream", "via": plan["type"]})
+
+
+@app.route("/api/stream")
+def stream():
+    url = str(request.args.get("url") or "").strip()
+    kind = "mp3" if request.args.get("kind") == "mp3" else "mp4"
+    quality = str(request.args.get("quality") or "best")
+
+    def err_page(msg):
+        return Response(
+            "<!doctype html><meta charset=utf-8><body style='background:#0b0d12;color:#e8eaf2;"
+            "font-family:sans-serif;padding:28px'><h3>Mode langsung tidak bisa untuk link ini</h3>"
+            "<p style='color:#8a91a5'>" + re.sub(r"<[^>]+>", "", str(msg)) + "</p>"
+            "<p><a href='/' style='color:#8994ff'>&larr; Balik ke Turunin</a> — coba lagi, "
+            "atau pakai kualitas lain.</p></body>", status=502, mimetype="text/html")
+
+    if not ENGINE_OK:
+        return err_page("Mesin yt-dlp tidak tersedia. Sebab: " + ENGINE_ERROR)
+    if not re.match(r"^https?://", url):
+        return err_page("Link tidak valid.")
+    try:
+        plan, reason, title = _resolve(url, kind, quality)
+    except Exception as e:
+        return err_page(_friendly_error(e))
+    if not plan:
+        return err_page(reason)
+
+    if plan["type"] == "proxy":
+        fmt = plan["fmt"]
+        ext = fmt.get("ext") or ("mp3" if kind == "mp3" else "mp4")
+        resp = Response(_proxy_gen(fmt), mimetype=_CTYPE.get(ext, "application/octet-stream"))
+        size = fmt.get("filesize") or fmt.get("filesize_approx")
+        if size:
+            resp.headers["Content-Length"] = str(int(size))
+        resp.headers["Content-Disposition"] = _disp(_safe_filename(title, ext))
+        return resp
+
+    if plan["type"] == "ffmpeg_mp3":
+        fmt = plan["fmt"]
+        args = [shutil.which("ffmpeg"), "-v", "error"] + _ffmpeg_header_args(fmt) + [
+            "-i", fmt["url"], "-vn", "-codec:a", "libmp3lame", "-b:a", "192k",
+            "-f", "mp3", "pipe:1"]
+        resp = Response(_ffmpeg_gen(args), mimetype="audio/mpeg")
+        resp.headers["Content-Disposition"] = _disp(_safe_filename(title, "mp3"))
+        return resp
+
+    # ffmpeg_merge: gabung video H.264 + audio jadi MP4 terfragmentasi via pipa
+    vf, af = plan["vfmt"], plan["afmt"]
+    args = [shutil.which("ffmpeg"), "-v", "error"] + _ffmpeg_header_args(vf) + [
+        "-i", vf["url"]] + _ffmpeg_header_args(af) + [
+        "-i", af["url"], "-map", "0:v:0", "-map", "1:a:0",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+        "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+        "-f", "mp4", "pipe:1"]
+    resp = Response(_ffmpeg_gen(args), mimetype="video/mp4")
+    resp.headers["Content-Disposition"] = _disp(_safe_filename(title, "mp4"))
+    return resp
 
 
 if __name__ == "__main__":

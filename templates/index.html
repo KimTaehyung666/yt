@@ -141,9 +141,10 @@
         </div>
         <div class="fmt-group">
           <label>&nbsp;</label>
-          <button class="btn btn-dl" id="dl-btn" onclick="startDownload()">Download sekarang</button>
+          <button class="btn btn-dl" id="dl-btn" onclick="startDownload()">Download langsung</button>
         </div>
       </div>
+      <div id="dl-mode-note"></div>
       <div class="prog" id="prog">
         <div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div>
         <div class="prog-text" id="prog-text">Menyiapkan…</div>
@@ -249,11 +250,39 @@ function setKind(k) {
 
 function setDlBtn(btn, busy) {
   if (busy) { btn.dataset.label = btn.textContent; btn.disabled = true; btn.textContent = 'Mengunduh… tunggu ya'; }
-  else { btn.disabled = false; btn.textContent = btn.dataset.label || 'Download sekarang'; }
+  else { btn.disabled = false; btn.textContent = btn.dataset.label || 'Download langsung'; }
 }
 async function startDownload() {
   const url = document.getElementById('url').value.trim();
   const btn = document.getElementById('dl-btn');
+  const note = document.getElementById('dl-mode-note');
+  note.innerHTML = '';
+  if (!url) { note.innerHTML = '<div class="error-box">Tempel link-nya dulu.</div>'; return; }
+  setDlBtn(btn, true);
+  btn.textContent = 'Menyiapkan tautan langsung…';
+  try {
+    const r = await fetch('/api/stream/check', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: url, kind: KIND, quality: document.getElementById('quality').value})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Gagal memeriksa mode unduhan.');
+    if (j.mode === 'stream') {
+      saveHistStream();
+      note.innerHTML = '<div class="note"><b>Mode langsung:</b> unduhan dimulai di browser kamu — cek panel unduhan browser. Server tidak menyimpan file ini.</div>';
+      window.location.href = '/api/stream?url=' + encodeURIComponent(url) + '&kind=' + KIND +
+        '&quality=' + encodeURIComponent(document.getElementById('quality').value);
+      setTimeout(function() { setDlBtn(btn, false); }, 2500);
+      return;
+    }
+    note.innerHTML = '<div class="note">' + esc(j.reason || 'Kualitas ini memakai mode simpan.') +
+      ' File tetap otomatis tersimpan ke folder Download setelah selesai.</div>';
+  } catch (e) {
+    note.innerHTML = '<div class="note">Mode langsung tidak bisa diperiksa (' + esc(e.message) + ') — memakai mode simpan.</div>';
+  }
+  setDlBtn(btn, false);
+  runJobDownload(url, btn);
+}
+
+async function runJobDownload(url, btn) {
   const prog = document.getElementById('prog');
   const fill = document.getElementById('prog-fill');
   const text = document.getElementById('prog-text');
@@ -333,6 +362,13 @@ async function pollJob(jobId, btn) {
 function loadHist() {
   try { return JSON.parse(localStorage.getItem('turunin_history_v1') || '[]'); } catch (e) { return []; }
 }
+function saveHistStream() {
+  const items = loadHist();
+  items.unshift({name: INFO ? INFO.title : 'Unduhan langsung', size: 0, kind: KIND, at: Date.now(), jobId: '',
+                 title: INFO ? INFO.title : 'Unduhan langsung', platform: INFO ? INFO.platform : '', stream: true});
+  try { localStorage.setItem('turunin_history_v1', JSON.stringify(items.slice(0, 12))); } catch (e) {}
+  renderHist();
+}
 function saveHist(name, size, jobId) {
   const items = loadHist();
   items.unshift({name: name, size: size, kind: KIND, at: Date.now(), jobId: jobId || '',
@@ -347,7 +383,7 @@ function renderHist() {
   box.innerHTML = items.map(function(it) {
     let h = '<div class="hist-item"><span class="tag">' + esc(it.kind === 'mp3' ? 'MP3' : 'MP4') + '</span>' +
       '<div class="hm"><div class="ht">' + esc(it.title || it.name) + '</div>' +
-      '<div class="hs">' + esc(it.name) + ' · ' + fmtSize(it.size) + '</div></div>';
+      '<div class="hs">' + (it.stream ? 'MODE LANGSUNG — DISIMPAN BROWSER' : esc(it.name) + ' · ' + fmtSize(it.size)) + '</div></div>';
     if (it.jobId) h += '<a class="btn-ghost" style="text-decoration:none;color:var(--mint);border-color:rgba(185,245,208,.4);flex:none" href="/api/jobs/' + esc(it.jobId) + '/file" download="' + esc(it.name) + '">Simpan</a>';
     return h + '</div>';
   }).join('');

@@ -8,9 +8,14 @@ Tempel link dari YouTube, TikTok, Instagram, Facebook, X/Twitter, dan
 
 - **Periksa link (server):** yt-dlp membaca metadata — judul, thumbnail,
   durasi, pengunggah, dan resolusi yang tersedia.
-- **Unduh (job async):** server mengunduh dengan format pilihan user
-  (gabung video+audio & konversi MP3 memakai ffmpeg bila ada), progres
-  tampil live, lalu file dikirim ke browser untuk disimpan.
+- **Unduh langsung (default, tanpa simpan di server):** yt-dlp mencari
+  alamat file asli, server meneruskannya sebagai pipa ke browser —
+  unduhan dikelola browser dan langsung masuk folder Download. MP3 dan
+  kualitas yang video+audionya terpisah (H.264) digabung sambil jalan
+  memakai ffmpeg sebagai pipa (URL → stdout), tetap tanpa file simpan.
+- **Mode simpan (cadangan):** untuk kualitas yang tak bisa digabung
+  sambil jalan, server mengunduh dulu (job async + progres live), lalu
+  file otomatis terkirim ke browser untuk disimpan.
 - **Riwayat sesi:** tersimpan di localStorage browser.
 
 ## Soal hosting (penting)

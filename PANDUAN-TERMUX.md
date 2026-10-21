@@ -27,7 +27,12 @@ bash ~/turunin/termux-run.sh
 
 Buka **http://localhost:5004** di browser HP. Kalau chip di kanan atas
 bertuliskan **MODE LOKAL — FULL**, kamu siap: tempel link dari platform
-apa pun → Periksa → pilih MP4/MP3 + kualitas → Download sekarang.
+apa pun → Periksa → pilih MP4/MP3 + kualitas → **Download langsung**.
+File mengalir lewat server sebagai pipa dan langsung masuk folder
+Download browser — server tidak menyimpan apa-apa. Hanya kualitas
+tertentu yang video+audionya tidak bisa digabung sambil jalan yang
+memakai mode simpan (server mengunduh dulu, lalu file otomatis
+terkirim ke browser juga).
 
 Catatan:
 
