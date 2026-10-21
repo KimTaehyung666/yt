@@ -12,9 +12,11 @@ app = Flask(__name__)
 try:
     import yt_dlp
     ENGINE_OK = True
-except Exception:
+    ENGINE_ERROR = ""
+except Exception as _e:  # alasan asli disimpan biar bisa didiagnosis
     yt_dlp = None
     ENGINE_OK = False
+    ENGINE_ERROR = "%s: %s" % (type(_e).__name__, _e)
 
 HAS_FFMPEG = bool(shutil.which("ffmpeg"))
 IS_SERVERLESS = bool(os.getenv("VERCEL"))
@@ -64,6 +66,7 @@ def index():
 def capabilities():
     return jsonify({
         "engine": ENGINE_OK,
+        "engine_error": ENGINE_ERROR,
         "ffmpeg": HAS_FFMPEG,
         "local_mode": LOCAL_MODE,
         "serverless": IS_SERVERLESS,
@@ -86,7 +89,7 @@ def _ydl_opts(extra=None):
 @app.route("/api/info", methods=["POST"])
 def info():
     if not ENGINE_OK:
-        return jsonify({"error": "Mesin yt-dlp tidak tersedia di server ini."}), 500
+        return jsonify({"error": "Mesin yt-dlp tidak tersedia di server ini. Sebab: " + ENGINE_ERROR}), 500
     data = request.get_json(force=True, silent=True) or {}
     url = str(data.get("url") or "").strip()
     if not re.match(r"^https?://", url):
@@ -193,7 +196,7 @@ def _run_job(job_id, url, kind, quality):
 @app.route("/api/jobs", methods=["POST"])
 def job_create():
     if not ENGINE_OK:
-        return jsonify({"error": "Mesin yt-dlp tidak tersedia di server ini."}), 500
+        return jsonify({"error": "Mesin yt-dlp tidak tersedia di server ini. Sebab: " + ENGINE_ERROR}), 500
     data = request.get_json(force=True, silent=True) or {}
     url = str(data.get("url") or "").strip()
     if not re.match(r"^https?://", url):
