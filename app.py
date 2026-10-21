@@ -1,4 +1,4 @@
-import os, re, glob, shutil, tempfile, threading, time, uuid
+import json, os, re, glob, shutil, tempfile, threading, time, uuid
 
 from flask import Flask, render_template, request, jsonify, send_file, Response
 
@@ -70,6 +70,7 @@ def capabilities():
         "ffmpeg": HAS_FFMPEG,
         "local_mode": LOCAL_MODE,
         "serverless": IS_SERVERLESS,
+        "rapidapi": _rapidapi_configured(),
     })
 
 
@@ -98,6 +99,9 @@ def info():
         with yt_dlp.YoutubeDL(_ydl_opts()) as ydl:
             inf = ydl.extract_info(url, download=False)
     except Exception as e:
+        fb = _api_info_fallback(url)
+        if fb:
+            return jsonify(fb)
         return jsonify({"error": _friendly_error(e)}), 502
     if inf.get("_type") == "playlist":
         entries = list(inf.get("entries") or [])
@@ -341,6 +345,16 @@ def _proxy_gen(fmt):
             yield chunk
 
 
+def _proxy_url_gen(url, headers=None):
+    req = urllib.request.Request(url, headers=dict(headers or {}))
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        while True:
+            chunk = resp.read(262144)
+            if not chunk:
+                break
+            yield chunk
+
+
 def _ffmpeg_gen(args):
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
@@ -393,11 +407,18 @@ def stream_check():
         return jsonify({"error": "Link tidak valid."}), 400
     kind = "mp3" if data.get("kind") == "mp3" else "mp4"
     quality = str(data.get("quality") or "best")
+    plan, reason, title, err = None, "", "", None
     try:
         plan, reason, title = _resolve(url, kind, quality)
     except Exception as e:
-        return jsonify({"error": _friendly_error(e)}), 502
+        err = e
     if not plan:
+        api = _api_plan_for(url, kind, quality)
+        if api:
+            plan, title = api
+    if not plan:
+        if err is not None:
+            return jsonify({"error": _friendly_error(err)}), 502
         return jsonify({"mode": "job", "reason": reason})
     return jsonify({"mode": "stream", "via": plan["type"],
                     "token": _token_store(plan, title)})
@@ -433,6 +454,19 @@ def stream():
         if not plan:
             return err_page(reason)
 
+    if plan["type"] == "api_link":
+        # Link dari API eksternal. Di serverless browser diarahkan
+        # langsung ke link-nya (paling ringan & tahan file besar);
+        # di lokal diteruskan sebagai pipa agar nama file rapi.
+        if plan.get("redirect"):
+            redir = Response(status=302)
+            redir.headers["Location"] = plan["url"]
+            return redir
+        resp = Response(_proxy_url_gen(plan["url"]),
+                        mimetype=_CTYPE.get(plan.get("ext") or "mp4", "application/octet-stream"))
+        resp.headers["Content-Disposition"] = _disp(_safe_filename(title, plan.get("ext") or "mp4"))
+        return resp
+
     if plan["type"] == "proxy":
         fmt = plan["fmt"]
         ext = fmt.get("ext") or ("mp3" if kind == "mp3" else "mp4")
@@ -463,6 +497,175 @@ def stream():
     resp = Response(_ffmpeg_gen(args), mimetype="video/mp4")
     resp.headers["Content-Disposition"] = _disp(_safe_filename(title, "mp4"))
     return resp
+
+
+# =====================================================================
+# API EKSTERNAL (RapidAPI) — cadangan khusus YouTube saat ekstrak lokal
+# diblokir platform (kasus khas IP cloud/Vercel). Server penyedia API
+# yang mengambil video; Turunin menerima link file jadinya.
+# Aktif hanya bila env RAPIDAPI_KEY diisi. Default penyedia:
+# youtube-search-download3 (RapidAPI) — bisa diganti lewat env
+# RAPIDAPI_HOST & RAPIDAPI_ENDPOINT (placeholder {id}).
+# =====================================================================
+_API_CACHE = {}  # video_id -> (links, exp)
+
+
+def _rapidapi_configured():
+    return bool(os.environ.get("RAPIDAPI_KEY"))
+
+
+def _yt_video_id(url):
+    m = re.search(r"(?:v=|youtu\.be/|/shorts/|/live/|/embed/)([A-Za-z0-9_-]{11})",
+                  str(url or ""))
+    return m.group(1) if m else None
+
+
+def _oembed_info(url):
+    try:
+        api = "https://www.youtube.com/oembed?url=%s&format=json" % urllib.parse.quote(url, safe="")
+        req = urllib.request.Request(api, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            d = json.loads(resp.read().decode("utf-8", "replace"))
+        return {"title": d.get("title"), "author": d.get("author_name"),
+                "thumbnail": d.get("thumbnail_url")}
+    except Exception:
+        return None
+
+
+def _walk_strings(node, path, out):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            _walk_strings(v, path + "/" + str(k), out)
+    elif isinstance(node, list):
+        for v in node:
+            _walk_strings(v, path, out)
+    elif isinstance(node, str):
+        out.append((path, node))
+
+
+_ITAG_H = {"18": 360, "22": 720, "133": 240, "134": 360, "135": 480,
+           "136": 720, "137": 1080, "160": 144, "140": 0}
+
+
+def _harvest_links(payload):
+    """Panen link media dari JSON API mana pun secara toleran.
+    Return {'mp4': {height: url}, 'mp3': url|None, 'title': str|None} atau None."""
+    items = []
+    _walk_strings(payload, "", items)
+    mp4, mp3, title = {}, None, None
+    for path, s in items:
+        low = path.lower()
+        if low.endswith("/title") and len(s) > 3 and not s.startswith("http"):
+            title = title or s
+            continue
+        if not s.startswith(("http://", "https://")):
+            continue
+        sl = s.lower()
+        is_media = ("googlevideo" in sl or "videoplayback" in sl or "mime=" in sl
+                    or re.search(r"\.(mp4|m4a|mp3|webm|opus)(\?|#|$)", sl))
+        if not is_media:
+            continue
+        is_audio = ("mp3" in low or "audio" in low or "mime=audio" in sl
+                    or ".mp3" in sl or ".m4a" in sl)
+        if is_audio:
+            if mp3 is None or ".mp3" in sl:
+                mp3 = s
+            continue
+        h = 0
+        hay = path + " " + s
+        mh = re.search(r"(?<!\d)(144|240|360|480|720|1080|1440|2160)(?!\d)", hay)
+        if mh:
+            h = int(mh.group(1))
+        else:
+            mi = re.search(r"(?:itag=|/)(18|22|133|134|135|136|137|160)(?:[/?&]|$)", hay)
+            if mi:
+                h = _ITAG_H.get(mi.group(1), 0)
+        if h not in mp4:
+            mp4[h] = s
+    if not mp4 and not mp3:
+        return None
+    return {"mp4": mp4, "mp3": mp3, "title": title}
+
+
+def _rapidapi_fetch_links(vid):
+    now = time.time()
+    hit = _API_CACHE.get(vid)
+    if hit and hit[1] > now:
+        return hit[0]
+    key = os.environ.get("RAPIDAPI_KEY")
+    if not key:
+        return None
+    host = os.environ.get("RAPIDAPI_HOST", "youtube-search-download3.p.rapidapi.com")
+    endpoint = os.environ.get("RAPIDAPI_ENDPOINT", "/download?video={id}")
+    api_url = "https://" + host + endpoint.replace("{id}", urllib.parse.quote(vid))
+    try:
+        req = urllib.request.Request(api_url, headers={
+            "x-rapidapi-key": key, "x-rapidapi-host": host,
+            "User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            payload = json.loads(resp.read().decode("utf-8", "replace"))
+    except Exception:
+        return None
+    links = _harvest_links(payload)
+    if links:
+        _API_CACHE[vid] = (links, now + 600)
+    return links
+
+
+def _api_plan_for(url, kind, quality):
+    vid = _yt_video_id(url)
+    if not vid or not _rapidapi_configured():
+        return None
+    links = _rapidapi_fetch_links(vid)
+    if not links:
+        return None
+    title = links.get("title")
+    if not title:
+        oe = _oembed_info("https://www.youtube.com/watch?v=" + vid) or {}
+        title = oe.get("title") or "turunin"
+    if kind == "mp3":
+        u = links.get("mp3")
+        if not u:
+            return None
+        return {"type": "api_link", "url": u, "ext": "mp3",
+                "redirect": IS_SERVERLESS}, title
+    mp4 = links.get("mp4") or {}
+    if not mp4:
+        return None
+    heights = sorted(mp4.keys(), reverse=True)
+    h = int(quality) if str(quality or "").isdigit() else None
+    pick = heights[0]
+    if h:
+        under = [x for x in heights if x and x <= h]
+        if under:
+            pick = under[0]
+    u = mp4[pick]
+    m = re.search(r"\.(mp4|webm)(\?|#|$)", u.lower())
+    ext = m.group(1) if m else "mp4"
+    return {"type": "api_link", "url": u, "ext": ext,
+            "redirect": IS_SERVERLESS}, title
+
+
+def _api_info_fallback(url):
+    vid = _yt_video_id(url)
+    if not vid or not _rapidapi_configured():
+        return None
+    oe = _oembed_info(url) or {}
+    links = _rapidapi_fetch_links(vid) or {}
+    title = links.get("title") or oe.get("title")
+    if not title and not links:
+        return None
+    return {
+        "title": title or "(tanpa judul)",
+        "platform": "YouTube (via API)",
+        "uploader": oe.get("author") or "",
+        "duration": None,
+        "duration_label": "-",
+        "thumbnail": oe.get("thumbnail") or "",
+        "heights": sorted((links.get("mp4") or {}).keys(), reverse=True),
+        "is_audio_only": False,
+        "via_api": True,
+    }
 
 
 if __name__ == "__main__":

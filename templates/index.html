@@ -201,6 +201,7 @@ async function loadCaps() {
     } else {
       chip.lastChild.textContent = 'MODE WEB — TERBATAS';
       note.innerHTML = '<div class="note"><b>Kamu membuka versi web (server cloud).</b> Sebagian platform — terutama YouTube — memblokir IP cloud, jadi download dari sini bisa gagal. Buat akses full, jalankan Turunin di Termux (lihat PANDUAN-TERMUX di repo).</div>';
+      if (caps.rapidapi) note.innerHTML += '<div class="note"><b>API eksternal aktif:</b> unduhan YouTube di versi web ini akan lewat RapidAPI (server penyedia API yang mengambil videonya).</div>';
     }
   } catch (e) { /* abaikan */ }
 }
@@ -229,6 +230,7 @@ async function checkInfo() {
     if (j.uploader) h += '<span>' + esc(j.uploader) + '</span>';
     h += '</div></div></div>';
     zone.innerHTML = h;
+    if (j.via_api) zone.innerHTML += '<div class="note">Info & link unduhan video ini lewat <b>API eksternal</b> — ekstrak langsung dari server ini sedang diblokir YouTube.</div>';
     const q = document.getElementById('quality');
     q.innerHTML = '<option value="best">Terbaik</option>' + (j.heights || []).map(function(x) {
       return '<option value="' + x + '">' + x + 'p</option>';
