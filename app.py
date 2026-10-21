@@ -35,7 +35,7 @@ def _friendly_error(msg):
     m = str(msg)
     if any(k.lower() in m.lower() for k in BOT_MARKERS):
         return ("Platform memblokir akses dari IP server ini (bot check / "
-                "perlu login). Ini batasan IP cloud — jalankan Turunin di "
+                "perlu login). Ini batasan IP cloud — jalankan Unduhin di "
                 "Termux (IP rumahan) supaya bisa. Detail: " + m[:160])
     if "Unsupported URL" in m:
         return "Link ini tidak didukung yt-dlp. Coba link video/post langsung, bukan link profil atau halaman utama."
@@ -249,14 +249,14 @@ import subprocess, urllib.request, urllib.error, urllib.parse
 
 
 def _safe_filename(title, ext):
-    name = re.sub(r"[^\w\s.\-]", "", str(title or "turunin"), flags=re.UNICODE).strip()
-    name = re.sub(r"\s+", " ", name)[:80].strip() or "turunin"
+    name = re.sub(r"[^\w\s.\-]", "", str(title or "unduhin"), flags=re.UNICODE).strip()
+    name = re.sub(r"\s+", " ", name)[:80].strip() or "unduhin"
     return name + "." + ext
 
 
 def _disp(filename):
     quoted = urllib.parse.quote(filename)
-    ascii_fb = filename.encode("ascii", "ignore").decode() or "turunin"
+    ascii_fb = filename.encode("ascii", "ignore").decode() or "unduhin"
     return "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (ascii_fb, quoted)
 
 
@@ -332,7 +332,7 @@ def _pick_stream_plan(inf, kind, quality):
 def _resolve(url, kind, quality):
     inf = _extract(url)
     plan, reason = _pick_stream_plan(inf, kind, quality)
-    return plan, reason, inf.get("title") or "turunin"
+    return plan, reason, inf.get("title") or "unduhin"
 
 
 def _proxy_gen(fmt):
@@ -435,7 +435,7 @@ def stream():
             "<!doctype html><meta charset=utf-8><body style='background:#0b0d12;color:#e8eaf2;"
             "font-family:sans-serif;padding:28px'><h3>Mode langsung tidak bisa untuk link ini</h3>"
             "<p style='color:#8a91a5'>" + re.sub(r"<[^>]+>", "", str(msg)) + "</p>"
-            "<p><a href='/' style='color:#8994ff'>&larr; Balik ke Turunin</a> — coba lagi, "
+            "<p><a href='/' style='color:#8994ff'>&larr; Balik ke Unduhin</a> — coba lagi, "
             "atau pakai kualitas lain.</p></body>", status=502, mimetype="text/html")
 
     if not ENGINE_OK:
@@ -502,7 +502,7 @@ def stream():
 # =====================================================================
 # API EKSTERNAL (RapidAPI) — cadangan khusus YouTube saat ekstrak lokal
 # diblokir platform (kasus khas IP cloud/Vercel). Server penyedia API
-# yang mengambil video; Turunin menerima link file jadinya.
+# yang mengambil video; Unduhin menerima link file jadinya.
 # Aktif hanya bila env RAPIDAPI_KEY diisi. Default penyedia:
 # youtube-search-download3 (RapidAPI) — bisa diganti lewat env
 # RAPIDAPI_HOST & RAPIDAPI_ENDPOINT (placeholder {id}).
@@ -632,7 +632,7 @@ def _api_plan_for(url, kind, quality):
     title = links.get("title")
     if not title:
         oe = _oembed_info("https://www.youtube.com/watch?v=" + vid) or {}
-        title = oe.get("title") or "turunin"
+        title = oe.get("title") or "unduhin"
     if kind == "mp3":
         u = links.get("mp3")
         if not u:

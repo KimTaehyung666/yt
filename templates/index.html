@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Turunin — Downloader Semua Sosmed</title>
-<meta name="description" content="Turunin: tempel link YouTube, TikTok, Instagram, Facebook, X — unduh jadi MP4 atau MP3.">
+<title>Unduhin — Downloader Semua Sosmed</title>
+<meta name="description" content="Unduhin: tempel link YouTube, TikTok, Instagram, Facebook, X — unduh jadi MP4 atau MP3.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -101,19 +101,15 @@
 <header class="topbar">
   <a class="brand" href="#">
     <span class="brand-mark"></span>
-    <span class="brand-name">TURUNIN<i>.</i></span>
+    <span class="brand-name">UNDUHIN<i>.</i></span>
     <span class="brand-tag">DOWNLOADER</span>
   </a>
-  <div class="top-meta">
-    <span class="status-chip hide-m"><span class="status-dot" id="dot-engine"></span>YT-DLP</span>
-    <span class="status-chip" id="chip-mode"><span class="status-dot off" id="dot-mode"></span>MEMERIKSA MODE…</span>
-  </div>
 </header>
 
 <div class="wrap">
   <div class="intro">
     <span class="eyebrow"><b>Tool</b>&nbsp; Unduh Video &amp; Audio</span>
-    <h1>Tempel link,<br><em>turunin</em> isinya.</h1>
+    <h1>Tempel link,<br><em>unduhin</em> isinya.</h1>
     <p>Satu tempat buat download video atau audio dari hampir semua platform. Pilih formatnya, pencet unduh, selesai.</p>
     <div class="platforms"><span>YOUTUBE</span><span>TIKTOK</span><span>INSTAGRAM</span><span>FACEBOOK</span><span>X / TWITTER</span><span>DAILYMOTION</span><span>+1000 SITUS LAIN</span></div>
   </div>
@@ -124,7 +120,6 @@
       <input type="url" id="url" placeholder="Tempel link video… (youtube.com, tiktok.com, instagram.com, …)" autocomplete="off">
       <button class="btn" id="check-btn" onclick="checkInfo()">Periksa</button>
     </div>
-    <div id="mode-note"></div>
     <div id="info-zone"></div>
     <div id="fmt-zone" style="display:none">
       <div class="fmt-row">
@@ -159,13 +154,8 @@
     </div>
   </section>
 
-  <section class="panel">
-    <div class="panel-head"><span class="no">02</span><h2>Riwayat Sesi Ini</h2><span class="ds">TERSIPAN DI BROWSER</span></div>
-    <div id="history"></div>
-  </section>
-
   <footer>
-    <span>TURUNIN — MESIN: YT-DLP</span>
+    <span>UNDUHIN — DOWNLOADER SEMUA SOSMED</span>
     <span class="love">DIBUAT DENGAN <b>♥</b> OLEH NATE RIVER</span>
     <span>PAKAI DENGAN BIJAK</span>
   </footer>
@@ -174,7 +164,6 @@
 <script>
 let INFO = null;
 let KIND = 'mp4';
-let LOCAL_MODE = false;
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
@@ -184,26 +173,6 @@ function esc(s) {
 function fmtSize(b) {
   if (!b && b !== 0) return '-';
   return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.round(b / 1024) + ' KB';
-}
-
-async function loadCaps() {
-  try {
-    const r = await fetch('/api/capabilities');
-    const caps = await r.json();
-    const chip = document.getElementById('chip-mode');
-    const note = document.getElementById('mode-note');
-    if (!caps.engine) document.getElementById('dot-engine').classList.add('off');
-    if (caps.local_mode) {
-      LOCAL_MODE = true;
-      document.getElementById('dot-mode').classList.remove('off');
-      chip.lastChild.textContent = 'MODE LOKAL — FULL';
-      note.innerHTML = '<div class="note"><b>Mode lokal (Termux/PC) aktif.</b> Server jalan di perangkatmu dengan IP rumahan — semua platform bisa dicoba, termasuk YouTube.</div>';
-    } else {
-      chip.lastChild.textContent = 'MODE WEB — TERBATAS';
-      note.innerHTML = '<div class="note"><b>Kamu membuka versi web (server cloud).</b> Sebagian platform — terutama YouTube — memblokir IP cloud, jadi download dari sini bisa gagal. Buat akses full, jalankan Turunin di Termux (lihat PANDUAN-TERMUX di repo).</div>';
-      if (caps.rapidapi) note.innerHTML += '<div class="note"><b>API eksternal aktif:</b> unduhan YouTube di versi web ini akan lewat RapidAPI (server penyedia API yang mengambil videonya).</div>';
-    }
-  } catch (e) { /* abaikan */ }
 }
 
 async function checkInfo() {
@@ -268,7 +237,6 @@ async function startDownload() {
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'Gagal memeriksa mode unduhan.');
     if (j.mode === 'stream') {
-      saveHistStream();
       note.innerHTML = '<div class="note"><b>Mode langsung:</b> unduhan dimulai di browser kamu — cek panel unduhan browser. Server tidak menyimpan file ini.</div>';
       window.location.href = j.token ? ('/api/stream?t=' + j.token)
         : ('/api/stream?url=' + encodeURIComponent(url) + '&kind=' + KIND +
@@ -326,7 +294,6 @@ async function pollJob(jobId, btn) {
       a.href = '/api/jobs/' + jobId + '/file';
       a.setAttribute('download', j.file.name);
       box.style.display = '';
-      saveHist(j.file.name, j.file.size, jobId);
       setDlBtn(btn, false);
       box.scrollIntoView({behavior: 'smooth', block: 'center'});
       // Otomatis mulai memindahkan file ke folder Download browser.
@@ -361,40 +328,7 @@ async function pollJob(jobId, btn) {
   }
 }
 
-/* ===== RIWAYAT ===== */
-function loadHist() {
-  try { return JSON.parse(localStorage.getItem('turunin_history_v1') || '[]'); } catch (e) { return []; }
-}
-function saveHistStream() {
-  const items = loadHist();
-  items.unshift({name: INFO ? INFO.title : 'Unduhan langsung', size: 0, kind: KIND, at: Date.now(), jobId: '',
-                 title: INFO ? INFO.title : 'Unduhan langsung', platform: INFO ? INFO.platform : '', stream: true});
-  try { localStorage.setItem('turunin_history_v1', JSON.stringify(items.slice(0, 12))); } catch (e) {}
-  renderHist();
-}
-function saveHist(name, size, jobId) {
-  const items = loadHist();
-  items.unshift({name: name, size: size, kind: KIND, at: Date.now(), jobId: jobId || '',
-                 title: INFO ? INFO.title : name, platform: INFO ? INFO.platform : ''});
-  try { localStorage.setItem('turunin_history_v1', JSON.stringify(items.slice(0, 12))); } catch (e) {}
-  renderHist();
-}
-function renderHist() {
-  const box = document.getElementById('history');
-  const items = loadHist();
-  if (!items.length) { box.innerHTML = '<div class="empty">Belum ada unduhan di sesi ini.</div>'; return; }
-  box.innerHTML = items.map(function(it) {
-    let h = '<div class="hist-item"><span class="tag">' + esc(it.kind === 'mp3' ? 'MP3' : 'MP4') + '</span>' +
-      '<div class="hm"><div class="ht">' + esc(it.title || it.name) + '</div>' +
-      '<div class="hs">' + (it.stream ? 'MODE LANGSUNG — DISIMPAN BROWSER' : esc(it.name) + ' · ' + fmtSize(it.size)) + '</div></div>';
-    if (it.jobId) h += '<a class="btn-ghost" style="text-decoration:none;color:var(--mint);border-color:rgba(185,245,208,.4);flex:none" href="/api/jobs/' + esc(it.jobId) + '/file" download="' + esc(it.name) + '">Simpan</a>';
-    return h + '</div>';
-  }).join('');
-}
-
 document.getElementById('url').addEventListener('keydown', function(e) { if (e.key === 'Enter') checkInfo(); });
-loadCaps();
-renderHist();
 </script>
 </body>
 </html>
