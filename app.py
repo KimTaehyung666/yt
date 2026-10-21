@@ -547,12 +547,17 @@ _ITAG_H = {"18": 360, "22": 720, "133": 240, "134": 360, "135": 480,
            "136": 720, "137": 1080, "160": 144, "140": 0}
 
 
+_AUDIO_ITAGS = {"139", "140", "141", "249", "250", "251"}
+_PROG_ITAGS = {"18", "22", "37", "43", "59", "78"}  # video+audio gabung
+
+
 def _harvest_links(payload):
     """Panen link media dari JSON API mana pun secara toleran.
-    Return {'mp4': {height: url}, 'mp3': url|None, 'title': str|None} atau None."""
+    Return {'mp4': {height: url}, 'mp4_prog': {height: url},
+    'mp3': url|None, 'title': str|None} atau None."""
     items = []
     _walk_strings(payload, "", items)
-    mp4, mp3, title = {}, None, None
+    mp4, mp4_prog, mp3, title = {}, {}, None, None
     for path, s in items:
         low = path.lower()
         if low.endswith("/title") and len(s) > 3 and not s.startswith("http"):
@@ -565,8 +570,10 @@ def _harvest_links(payload):
                     or re.search(r"\.(mp4|m4a|mp3|webm|opus)(\?|#|$)", sl))
         if not is_media:
             continue
-        is_audio = ("mp3" in low or "audio" in low or "mime=audio" in sl
-                    or ".mp3" in sl or ".m4a" in sl)
+        mitag = re.search(r"itag=(\d+)", sl)
+        itag = mitag.group(1) if mitag else None
+        is_audio = (itag in _AUDIO_ITAGS or "mp3" in low or "audio" in low
+                    or "mime=audio" in sl or ".mp3" in sl or ".m4a" in sl)
         if is_audio:
             if mp3 is None or ".mp3" in sl:
                 mp3 = s
@@ -576,15 +583,18 @@ def _harvest_links(payload):
         mh = re.search(r"(?<!\d)(144|240|360|480|720|1080|1440|2160)(?!\d)", hay)
         if mh:
             h = int(mh.group(1))
-        else:
-            mi = re.search(r"(?:itag=|/)(18|22|133|134|135|136|137|160)(?:[/?&]|$)", hay)
-            if mi:
-                h = _ITAG_H.get(mi.group(1), 0)
+        elif itag:
+            h = _ITAG_H.get(itag, 0)
+            if not h:
+                mres = re.search(r"(\d{3,4})p", hay)
+                h = int(mres.group(1)) if mres else 0
         if h not in mp4:
             mp4[h] = s
+        if itag in _PROG_ITAGS and h not in mp4_prog:
+            mp4_prog[h] = s
     if not mp4 and not mp3:
         return None
-    return {"mp4": mp4, "mp3": mp3, "title": title}
+    return {"mp4": mp4, "mp4_prog": mp4_prog, "mp3": mp3, "title": title}
 
 
 def _rapidapi_fetch_links(vid):
@@ -629,7 +639,10 @@ def _api_plan_for(url, kind, quality):
             return None
         return {"type": "api_link", "url": u, "ext": "mp3",
                 "redirect": IS_SERVERLESS}, title
-    mp4 = links.get("mp4") or {}
+    # Utamakan format progresif (video+audio gabung, mis. itag 18/22).
+    # Format adaptif dari API (1080p dst.) umumnya video SAJA tanpa
+    # suara — mengunduhnya mentah menghasilkan video bisu.
+    mp4 = links.get("mp4_prog") or links.get("mp4") or {}
     if not mp4:
         return None
     heights = sorted(mp4.keys(), reverse=True)
