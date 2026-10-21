@@ -156,6 +156,8 @@ def _run_job(job_id, url, kind, quality):
             job["percent"] = round(got * 100 / total, 1) if total else None
             job["speed"] = _clean_ansi(d.get("_speed_str", "")).strip()
             job["eta"] = _clean_ansi(d.get("_eta_str", "")).strip()
+            job["downloaded"] = _clean_ansi(d.get("_downloaded_bytes_str", "")).strip()
+            job["total"] = _clean_ansi(d.get("_total_bytes_str", "")).strip()
         elif d.get("status") == "finished":
             job["phase"] = "Mengunduh selesai, memproses file…"
             job["percent"] = 100
@@ -217,7 +219,7 @@ def job_status(job_id):
     job = _JOBS.get(job_id)
     if not job:
         return jsonify({"error": "Job tidak ditemukan (server mungkin restart)."}), 404
-    out = {k: job[k] for k in ("status", "phase", "percent", "speed", "eta", "error")}
+    out = {k: job.get(k) for k in ("status", "phase", "percent", "speed", "eta", "error", "downloaded", "total")}
     if job.get("file"):
         out["file"] = {"name": job["file"]["name"], "size": job["file"]["size"]}
     return jsonify(out)
