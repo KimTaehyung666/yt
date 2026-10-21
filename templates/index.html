@@ -153,6 +153,7 @@
         <div class="fn" id="done-name">-</div>
         <div class="fs" id="done-size">-</div>
         <a class="btn btn-dl" id="done-link" href="#" download style="text-decoration:none;display:inline-block">Simpan file</a>
+        <div class="fs" style="margin-top:9px">File ini masih tersimpan di server Termux. Pencet <b>Simpan file</b> buat mindahinnya ke folder Download HP kamu (pas unduhan selesai, tombolnya kepencet otomatis juga).</div>
       </div>
     </div>
   </section>
@@ -293,8 +294,11 @@ async function pollJob(jobId, btn) {
       a.href = '/api/jobs/' + jobId + '/file';
       a.setAttribute('download', j.file.name);
       box.style.display = '';
-      saveHist(j.file.name, j.file.size);
+      saveHist(j.file.name, j.file.size, jobId);
       setDlBtn(btn, false);
+      box.scrollIntoView({behavior: 'smooth', block: 'center'});
+      // Otomatis mulai memindahkan file ke folder Download browser.
+      setTimeout(function() { try { a.click(); } catch (e) {} }, 700);
       return;
     }
     if (j.status === 'error') {
@@ -329,9 +333,9 @@ async function pollJob(jobId, btn) {
 function loadHist() {
   try { return JSON.parse(localStorage.getItem('turunin_history_v1') || '[]'); } catch (e) { return []; }
 }
-function saveHist(name, size) {
+function saveHist(name, size, jobId) {
   const items = loadHist();
-  items.unshift({name: name, size: size, kind: KIND, at: Date.now(),
+  items.unshift({name: name, size: size, kind: KIND, at: Date.now(), jobId: jobId || '',
                  title: INFO ? INFO.title : name, platform: INFO ? INFO.platform : ''});
   try { localStorage.setItem('turunin_history_v1', JSON.stringify(items.slice(0, 12))); } catch (e) {}
   renderHist();
@@ -341,9 +345,11 @@ function renderHist() {
   const items = loadHist();
   if (!items.length) { box.innerHTML = '<div class="empty">Belum ada unduhan di sesi ini.</div>'; return; }
   box.innerHTML = items.map(function(it) {
-    return '<div class="hist-item"><span class="tag">' + esc(it.kind === 'mp3' ? 'MP3' : 'MP4') + '</span>' +
+    let h = '<div class="hist-item"><span class="tag">' + esc(it.kind === 'mp3' ? 'MP3' : 'MP4') + '</span>' +
       '<div class="hm"><div class="ht">' + esc(it.title || it.name) + '</div>' +
-      '<div class="hs">' + esc(it.name) + ' · ' + fmtSize(it.size) + '</div></div></div>';
+      '<div class="hs">' + esc(it.name) + ' · ' + fmtSize(it.size) + '</div></div>';
+    if (it.jobId) h += '<a class="btn-ghost" style="text-decoration:none;color:var(--mint);border-color:rgba(185,245,208,.4);flex:none" href="/api/jobs/' + esc(it.jobId) + '/file" download="' + esc(it.name) + '">Simpan</a>';
+    return h + '</div>';
   }).join('');
 }
 
