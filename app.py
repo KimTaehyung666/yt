@@ -1,4 +1,4 @@
-import os, re, glob, shutil, tempfile, threading, uuid
+import os, re, glob, shutil, tempfile, threading, time, uuid
 
 from flask import Flask, render_template, request, jsonify, send_file, Response
 
@@ -368,6 +368,21 @@ _CTYPE = {"mp4": "video/mp4", "webm": "video/webm", "m4a": "audio/mp4",
           "mp3": "audio/mpeg", "opus": "audio/opus", "ogg": "audio/ogg"}
 
 
+# Tiket stream: hasil resolve (alamat file asli) disimpan sebentar di
+# server supaya /api/stream bisa langsung mengalirkan file tanpa
+# mengulang extract_info ke platform (dulu dua kali — terasa lambat).
+_STREAM_TOKENS = {}
+
+
+def _token_store(plan, title):
+    now = time.time()
+    for t in [t for t, v in _STREAM_TOKENS.items() if v["exp"] < now]:
+        _STREAM_TOKENS.pop(t, None)
+    tok = uuid.uuid4().hex[:16]
+    _STREAM_TOKENS[tok] = {"plan": plan, "title": title, "exp": now + 600}
+    return tok
+
+
 @app.route("/api/stream/check", methods=["POST"])
 def stream_check():
     if not ENGINE_OK:
@@ -379,12 +394,13 @@ def stream_check():
     kind = "mp3" if data.get("kind") == "mp3" else "mp4"
     quality = str(data.get("quality") or "best")
     try:
-        plan, reason, _title = _resolve(url, kind, quality)
+        plan, reason, title = _resolve(url, kind, quality)
     except Exception as e:
         return jsonify({"error": _friendly_error(e)}), 502
     if not plan:
         return jsonify({"mode": "job", "reason": reason})
-    return jsonify({"mode": "stream", "via": plan["type"]})
+    return jsonify({"mode": "stream", "via": plan["type"],
+                    "token": _token_store(plan, title)})
 
 
 @app.route("/api/stream")
@@ -403,14 +419,19 @@ def stream():
 
     if not ENGINE_OK:
         return err_page("Mesin yt-dlp tidak tersedia. Sebab: " + ENGINE_ERROR)
-    if not re.match(r"^https?://", url):
-        return err_page("Link tidak valid.")
-    try:
-        plan, reason, title = _resolve(url, kind, quality)
-    except Exception as e:
-        return err_page(_friendly_error(e))
-    if not plan:
-        return err_page(reason)
+    tok = str(request.args.get("t") or "")
+    entry = _STREAM_TOKENS.get(tok)
+    if entry and entry["exp"] > time.time():
+        plan, title = entry["plan"], entry["title"]
+    else:
+        if not re.match(r"^https?://", url):
+            return err_page("Link tidak valid.")
+        try:
+            plan, reason, title = _resolve(url, kind, quality)
+        except Exception as e:
+            return err_page(_friendly_error(e))
+        if not plan:
+            return err_page(reason)
 
     if plan["type"] == "proxy":
         fmt = plan["fmt"]

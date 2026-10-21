@@ -268,8 +268,9 @@ async function startDownload() {
     if (j.mode === 'stream') {
       saveHistStream();
       note.innerHTML = '<div class="note"><b>Mode langsung:</b> unduhan dimulai di browser kamu — cek panel unduhan browser. Server tidak menyimpan file ini.</div>';
-      window.location.href = '/api/stream?url=' + encodeURIComponent(url) + '&kind=' + KIND +
-        '&quality=' + encodeURIComponent(document.getElementById('quality').value);
+      window.location.href = j.token ? ('/api/stream?t=' + j.token)
+        : ('/api/stream?url=' + encodeURIComponent(url) + '&kind=' + KIND +
+           '&quality=' + encodeURIComponent(document.getElementById('quality').value));
       setTimeout(function() { setDlBtn(btn, false); }, 2500);
       return;
     }
