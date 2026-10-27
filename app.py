@@ -33,6 +33,18 @@ BOT_MARKERS = ("Sign in to confirm", "not a bot", "HTTP Error 403",
 
 def _friendly_error(msg):
     m = str(msg)
+    ml = m.lower()
+    if "instagram" in ml and ("empty media response" in ml or "cookies" in ml
+                              or "logged-in" in ml or "login" in ml):
+        # Reel/video IG tanpa login: halaman publiknya tidak memuat link video
+        # sama sekali (cek langsung: tanpa og:video, tanpa mp4, tanpa scontent) —
+        # jadi bukan sekadar gagal ekstrak, memang dikunci IG. Foto masih bisa
+        # lewat pratinjau publik (og:image), video tidak. Jangan bocorkan pesan
+        # mentah yt-dlp (Inggris + saran cookies) ke user.
+        return ("Video/reel Instagram ini tidak bisa diambil tanpa login — "
+                "Instagram mengunci medianya untuk pengunjung tanpa akun. "
+                "Foto IG masih bisa (lewat pratinjau publik); video dari server "
+                "publik belum bisa. Coba link yang sama di Unduhin Termux (IP rumahan).")
     if any(k.lower() in m.lower() for k in BOT_MARKERS):
         return ("Platform memblokir akses dari IP server ini (bot check / "
                 "perlu login). Ini batasan IP cloud — jalankan Unduhin di "
