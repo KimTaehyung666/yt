@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Unduhin — Downloader Semua Sosmed</title>
-<meta name="description" content="Unduhin: tempel link YouTube, TikTok, Instagram, Facebook, X — unduh jadi MP4 atau MP3.">
+<meta name="description" content="Unduhin: tempel link YouTube, TikTok, Instagram, Facebook, X — unduh jadi MP4, MP3, atau foto.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -33,7 +33,7 @@
   .status-dot{width:6px;height:6px;border-radius:50%;background:var(--mint);display:inline-block}
   .status-dot.off{background:var(--faint)}
   @media (max-width:640px){.status-chip.hide-m{display:none}.brand-tag{display:none}}
-  .wrap{max-width:880px;margin:0 auto;padding:26px 18px 60px}
+  .wrap{max-width:880px;margin:0 auto;padding:26px 18px 60px;min-height:calc(100vh - 64px);min-height:calc(100dvh - 64px);display:flex;flex-direction:column}
   .intro h1{font-family:var(--disp);font-size:clamp(28px,5.4vw,40px);line-height:1.12;margin:6px 0 8px;font-weight:700}
   .intro h1 em{font-style:normal;color:var(--mint)}
   .intro p{color:var(--dim);max-width:600px;margin:0 0 4px}
@@ -47,6 +47,7 @@
   .panel-head h2{font-family:var(--disp);font-size:17px;margin:0;font-weight:600}
   .panel-head .ds{margin-left:auto;font:9px var(--mono);color:var(--faint);letter-spacing:.06em;text-align:right}
   .link-row{display:flex;gap:8px}
+  @media (max-width:560px){.link-row{flex-direction:column}.link-row .btn{width:100%;padding:13px}}
   .link-row input{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:4px;color:var(--text);padding:12px 13px;font-size:14px;min-width:0}
   .link-row input:focus{outline:none;border-color:var(--blue)}
   .btn{background:var(--blue);color:#fff;border:none;border-radius:4px;padding:12px 18px;font-weight:700;font-size:14px}
@@ -91,7 +92,7 @@
   .hist-item .hs{font:10px var(--mono);color:var(--dim);margin-top:2px}
   .hist-item .tag{font:9px var(--mono);border:1px solid var(--line);border-radius:3px;padding:3px 6px;color:var(--yellow);flex:none}
   .empty{color:var(--faint);font-size:13px;padding:8px 2px}
-  footer{border-top:1px solid var(--line);margin-top:34px;padding-top:18px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font:9.5px var(--mono);letter-spacing:.1em;color:var(--faint)}
+  footer{border-top:1px solid var(--line);margin-top:auto;padding-top:18px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font:9.5px var(--mono);letter-spacing:.1em;color:var(--faint)}
   footer .love{color:var(--dim)}
   footer .love b{color:var(--coral);font-weight:500}
 </style>
@@ -108,16 +109,16 @@
 
 <div class="wrap">
   <div class="intro">
-    <span class="eyebrow"><b>Tool</b>&nbsp; Unduh Video &amp; Audio</span>
+    <span class="eyebrow"><b>Tool</b>&nbsp; Unduh Video, Audio &amp; Foto</span>
     <h1>Tempel link,<br><em>unduhin</em> isinya.</h1>
-    <p>Satu tempat buat download video atau audio dari hampir semua platform. Pilih formatnya, pencet unduh, selesai.</p>
+    <p>Satu tempat buat download video, audio, atau foto dari hampir semua platform. Pilih formatnya, pencet unduh, selesai.</p>
     <div class="platforms"><span>YOUTUBE</span><span>TIKTOK</span><span>INSTAGRAM</span><span>FACEBOOK</span><span>X / TWITTER</span><span>DAILYMOTION</span><span>+1000 SITUS LAIN</span></div>
   </div>
 
   <section class="panel">
     <div class="panel-head"><span class="no">01</span><h2>Ambil Konten</h2><span class="ds">TEMPEL LINK → PERIKSA → UNDUH</span></div>
     <div class="link-row">
-      <input type="url" id="url" placeholder="Tempel link video… (youtube.com, tiktok.com, instagram.com, …)" autocomplete="off">
+      <input type="url" id="url" placeholder="Tempel link video, foto, atau audio…" autocomplete="off">
       <button class="btn" id="check-btn" onclick="checkInfo()">Periksa</button>
     </div>
     <div id="info-zone"></div>
@@ -150,7 +151,7 @@
         <div class="fn" id="done-name">-</div>
         <div class="fs" id="done-size">-</div>
         <a class="btn btn-dl" id="done-link" href="#" download style="text-decoration:none;display:inline-block">Simpan file</a>
-        <div class="fs" style="margin-top:9px">File ini masih tersimpan di server Termux. Pencet <b>Simpan file</b> buat mindahinnya ke folder Download HP kamu (pas unduhan selesai, tombolnya kepencet otomatis juga).</div>
+        <div class="fs" style="margin-top:9px">File ini masih tersimpan di server. Pencet <b>Simpan file</b> buat mindahinnya ke folder Download HP kamu (pas unduhan selesai, tombolnya kepencet otomatis juga).</div>
       </div>
     </div>
   </section>
